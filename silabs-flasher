@@ -114,6 +114,9 @@ def upload_firmware(port, baudrate, firmware):
     idx = m.expect(["Serial upload complete", "Serial upload aborted"])
     if idx == 0:
         click.echo("Bootloader reported successful upload.")
+        click.echo("Starting flashed firmware...")
+        m.expect("BL > ")
+        m.send("2")
     elif idx == 1:
         click.echo("Bootloader reported aborted upload:")
         errortobanner = re.compile(b"(.*)\r\nGecko Bootloader", re.DOTALL)
