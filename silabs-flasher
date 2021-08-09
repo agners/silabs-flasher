@@ -185,13 +185,18 @@ async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
     if cm4_gpio_reset:
         import RPi.GPIO as GPIO
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(24, GPIO.OUT)
-        GPIO.setup(25, GPIO.OUT)
+        GPIO.setup(24, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(25, GPIO.OUT, initial=GPIO.HIGH)
 
         GPIO.output(25, 0) # Assert Reset
         GPIO.output(24, 0) # 0=BL mode, 1=Firmware
         time.sleep(0.1)
         GPIO.output(25, 1) # Deassert Reset
+        time.sleep(0.1)
+        # This clears all GPIO leaving them as input/without pulls
+        # External pulls will make sure the SoC will enter Firmware
+        # on next reset.
+        GPIO.cleanup()
 
     upload_firmware(device, baudrate, firmware)
 
