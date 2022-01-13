@@ -13,6 +13,7 @@ import bellows.types
 
 import logging
 import serial
+import time
 
 import re
 import pexpect
@@ -166,8 +167,9 @@ async def info(ctx):
 @click.pass_context
 @click.option('--firmware', type=click.File('rb'), required=True, envvar='SILABS_FIRMWARE_FILE')
 @click.option('--ezsp-reset/--no-ezsp-reset', default=True, show_default=True)
+@click.option('--cm4-gpio-reset', is_flag=True, default=False, show_default=True)
 @background
-async def flash(ctx, firmware, ezsp_reset):
+async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
     device = ctx.obj["device"]
     baudrate = ctx.obj["baudrate"]
 
@@ -180,6 +182,21 @@ async def flash(ctx, firmware, ezsp_reset):
             await launch_bootloader(ezsp)
             ezsp.close()
         ezsp = None
+    if cm4_gpio_reset:
+        import RPi.GPIO as GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(24, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(25, GPIO.OUT, initial=GPIO.HIGH)
+
+        GPIO.output(25, 0) # Assert Reset
+        GPIO.output(24, 0) # 0=BL mode, 1=Firmware
+        time.sleep(0.1)
+        GPIO.output(25, 1) # Deassert Reset
+        time.sleep(0.1)
+        # This clears all GPIO leaving them as input/without pulls
+        # External pulls will make sure the SoC will enter Firmware
+        # on next reset.
+        GPIO.cleanup()
 
     upload_firmware(device, baudrate, firmware)
 
