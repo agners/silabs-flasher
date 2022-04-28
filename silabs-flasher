@@ -182,20 +182,24 @@ async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
             ezsp.close()
         ezsp = None
     if cm4_gpio_reset:
-        import RPi.GPIO as GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(24, GPIO.OUT, initial=GPIO.HIGH)
-        GPIO.setup(25, GPIO.OUT, initial=GPIO.HIGH)
+        import gpiod
+        chip = gpiod.Chip('0', gpiod.Chip.OPEN_BY_NUMBER)
+        bl = chip.get_line(24)
+        reset = chip.get_line(25)
+        bl.request("silabs-flasher")
+        reset.request("silabs-flasher")
 
-        GPIO.output(25, 0) # Assert Reset
-        GPIO.output(24, 0) # 0=BL mode, 1=Firmware
+        reset.set_direction_output(0) # Assert Reset
+        bl.set_direction_output(0) # 0=BL mode, 1=Firmware
         time.sleep(0.1)
-        GPIO.output(25, 1) # Deassert Reset
+        reset.set_direction_output(1) # Deassert Reset
         time.sleep(0.1)
         # This clears all GPIO leaving them as input/without pulls
         # External pulls will make sure the SoC will enter Firmware
         # on next reset.
-        GPIO.cleanup()
+        reset.set_direction_input()
+        bl.set_direction_input()
+        chip.close()
 
     upload_firmware(device, baudrate, firmware)
 
