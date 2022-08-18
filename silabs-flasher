@@ -19,6 +19,7 @@ import re
 import pexpect
 from pexpect import fdpexpect
 
+from gpiozero import OutputDevice
 from xmodem import XMODEM
 
 LOGGER = logging.getLogger(__name__)
@@ -182,20 +183,17 @@ async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
             ezsp.close()
         ezsp = None
     if cm4_gpio_reset:
-        import RPi.GPIO as GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(24, GPIO.OUT, initial=GPIO.HIGH)
-        GPIO.setup(25, GPIO.OUT, initial=GPIO.HIGH)
+        with OutputDevice(pin=24, initial_value=True) as gpio24, \
+             OutputDevice(pin=25, initial_value=True) as gpio25:
+            gpio24.off()  # Assert Reset
+            gpio25.off()  # 0=BL mode, 1=Firmware
+            time.sleep(0.1)
+            gpio25.on()  # Deassert Reset
+            time.sleep(0.1)
 
-        GPIO.output(25, 0) # Assert Reset
-        GPIO.output(24, 0) # 0=BL mode, 1=Firmware
-        time.sleep(0.1)
-        GPIO.output(25, 1) # Deassert Reset
-        time.sleep(0.1)
-        # This clears all GPIO leaving them as input/without pulls
+        # Context manager clears all GPIO leaving them as input/without pulls
         # External pulls will make sure the SoC will enter Firmware
         # on next reset.
-        GPIO.cleanup()
 
     upload_firmware(device, baudrate, firmware)
 
