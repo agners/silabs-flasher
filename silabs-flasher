@@ -183,6 +183,8 @@ async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
             ezsp.close()
         ezsp = None
     if cm4_gpio_reset:
+        os.environ.setdefault("GPIOZERO_PIN_FACTORY", "native")
+
         with OutputDevice(pin=24, initial_value=True) as gpio24, \
              OutputDevice(pin=25, initial_value=True) as gpio25:
             gpio24.off()  # Assert Reset
