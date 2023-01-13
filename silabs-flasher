@@ -3,25 +3,23 @@
 # Author: Stefan Agner <stefan@agner.ch>
 
 import asyncio
-import click
 import functools
-import os
-
-import bellows.config as config
-import bellows.ezsp
-import bellows.types
-
 import logging
-import serial
+import os
+import re
 import time
 
-import re
+import bellows.ezsp
+import bellows.types
+import click
 import pexpect
+import serial
+from bellows import config
 from pexpect import fdpexpect
-
 from xmodem import XMODEM
 
 LOGGER = logging.getLogger(__name__)
+
 
 def background(f):
     @functools.wraps(f)
@@ -30,7 +28,8 @@ def background(f):
 
     return inner
 
-async def setup(dev, baudrate, cbh=None, configure=True):
+
+async def setup(dev, baudrate, cbh=None):
     device_config = {
         config.CONF_DEVICE_PATH: dev,
         config.CONF_DEVICE_BAUDRATE: baudrate,
@@ -52,6 +51,7 @@ async def setup(dev, baudrate, cbh=None, configure=True):
 
     return s
 
+
 async def launch_bootloader(ezsp):
     try:
         click.echo("Launching bootloader in mode recovery mode via EZSP.")
@@ -65,69 +65,76 @@ async def launch_bootloader(ezsp):
 
     return True
 
+
 def upload_firmware(port, baudrate, firmware):
     # Communicate with Bootloader using pyserial.
-    sp = serial.Serial(
-        port = port,
-        baudrate = baudrate, 
+    serial_port = serial.Serial(
+        port=port,
+        baudrate=baudrate,
         stopbits=serial.STOPBITS_ONE,
-        bytesize=serial.EIGHTBITS
+        bytesize=serial.EIGHTBITS,
     )
-    fd = sp.fileno()
-    m = fdpexpect.fdspawn(fd, timeout=2)
+    fd = serial_port.fileno()
+    expect = fdpexpect.fdspawn(fd, timeout=2)
 
-    blbanner = re.compile(b"Gecko Bootloader v([0-9\.]*)\r\n")
-    m.sendline("")
-    idx = m.expect([blbanner, pexpect.TIMEOUT])
+    blbanner = re.compile(
+        b"Gecko Bootloader v([0-9\.]*)\r\n"
+    )  # pylint: disable=anomalous-backslash-in-string
+    expect.sendline("")
+    idx = expect.expect([blbanner, pexpect.TIMEOUT])
     if idx == 1:
         click.echo("Failed to launch the bootloader. Bootloader banner did not appear.")
         return
 
-    blversion = m.match.group(1).decode()
+    bl_version = expect.match.group(1).decode()
     click.echo("Bootloader detected successfully.")
-    click.echo(f"Bootloader version: {blversion}")
+    click.echo(f"Bootloader version: {bl_version}")
 
-    m.expect("1. upload gbl")
-    m.expect("BL > ")
-    m.send("1")
-    m.expect("C")
+    expect.expect("1. upload gbl")
+    expect.expect("BL > ")
+    expect.send("1")
+    expect.expect("C")
 
     click.echo("Starting firmware upload...")
-    with click.progressbar(length=os.fstat(firmware.fileno()).st_size,
-                           label='Firmware update') as progress:
+    with click.progressbar(
+        length=os.fstat(firmware.fileno()).st_size, label="Firmware update"
+    ) as progress:
+
         def getc(size, timeout=1):
-            data = sp.read(size)
-            #print("get", data.hex())
+            data = serial_port.read(size)
+            # print("get", data.hex())
             return data
 
         def putc(data, timeout=1):
-            #print("putc", data.hex())
-            sp.write(data)
+            # print("putc", data.hex())
+            serial_port.write(data)
             progress.update(len(data))
-            #time.sleep(0.001)
+
         modem = XMODEM(getc, putc)
         sentcheck = modem.send(firmware, quiet=True, retry=0)
 
     if not sentcheck:
         print("XMODEM transfer failed.")
 
-    idx = m.expect(["Serial upload complete", "Serial upload aborted"])
+    idx = expect.expect(["Serial upload complete", "Serial upload aborted"])
     if idx == 0:
         click.echo("Bootloader reported successful upload.")
         click.echo("Starting flashed firmware...")
-        m.expect("BL > ")
-        m.send("2")
+        expect.expect("BL > ")
+        expect.send("2")
     elif idx == 1:
         click.echo("Bootloader reported aborted upload:")
         errortobanner = re.compile(b"(.*)\r\nGecko Bootloader", re.DOTALL)
-        m.expect(errortobanner)
-        error = m.match.group(1).decode().strip()
+        expect.expect(errortobanner)
+        error = expect.match.group(1).decode().strip()
         print(error)
 
 
 @click.group()
-@click.option('--device', envvar='SILABS_FIRMWARE_DEVICE', required=True)
-@click.option('--baudrate', envvar='SILABS_FIRMWARE_BAUDRATE', default=115200, show_default=True)
+@click.option("--device", envvar="SILABS_FIRMWARE_DEVICE", required=True)
+@click.option(
+    "--baudrate", envvar="SILABS_FIRMWARE_BAUDRATE", default=115200, show_default=True
+)
 @click.pass_context
 def main(ctx, device, baudrate):
     """Silicon Labs firmware upgrade utility"""
@@ -135,6 +142,7 @@ def main(ctx, device, baudrate):
         "device": device,
         "baudrate": baudrate,
     }
+
 
 @main.command()
 @click.pass_context
@@ -162,11 +170,14 @@ async def info(ctx):
 
     ezsp.close()
 
+
 @main.command()
 @click.pass_context
-@click.option('--firmware', type=click.File('rb'), required=True, envvar='SILABS_FIRMWARE_FILE')
-@click.option('--ezsp-reset/--no-ezsp-reset', default=True, show_default=True)
-@click.option('--cm4-gpio-reset', is_flag=True, default=False, show_default=True)
+@click.option(
+    "--firmware", type=click.File("rb"), required=True, envvar="SILABS_FIRMWARE_FILE"
+)
+@click.option("--ezsp-reset/--no-ezsp-reset", default=True, show_default=True)
+@click.option("--cm4-gpio-reset", is_flag=True, default=False, show_default=True)
 @background
 async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
     device = ctx.obj["device"]
@@ -176,35 +187,38 @@ async def flash(ctx, firmware, ezsp_reset, cm4_gpio_reset):
         click.echo("Trying to connect using EZSP...")
         ezsp = await setup(device, baudrate)
         if ezsp is None:
-            click.echo("Failed communicating using EZSP, assuming we are in bootloader.")
+            click.echo(
+                "Failed communicating using EZSP, assuming we are in bootloader."
+            )
         else:
             await launch_bootloader(ezsp)
             ezsp.close()
         ezsp = None
     if cm4_gpio_reset:
         import gpiod
+
         chip = gpiod.chip(0, gpiod.chip.OPEN_BY_NUMBER)
-        bl = chip.get_line(24)
+        boot_loader = chip.get_line(24)
         reset = chip.get_line(25)
 
-        config = gpiod.line_request()
-        config.consumer = "silabs-flasher"
-        config.request_type = gpiod.line_request.DIRECTION_OUTPUT
+        gpio_config = gpiod.line_request()
+        gpio_config.consumer = "silabs-flasher"
+        gpio_config.request_type = gpiod.line_request.DIRECTION_OUTPUT
 
-        bl.request(config, 0) # Assert Reset
-        reset.request(config, 0) # 0=BL mode, 1=Firmware
+        boot_loader.request(gpio_config, 0)  # 0=BL mode, 1=Firmware
+        reset.request(gpio_config, 0)  # Assert Reset
 
         time.sleep(0.1)
-        reset.set_value(1) # Deassert Reset
+        reset.set_value(1)  # Deassert Reset
         time.sleep(0.1)
         # This clears all GPIO leaving them as input/without pulls
         # External pulls will make sure the SoC will enter Firmware
         # on next reset.
         reset.set_direction_input()
-        bl.set_direction_input()
+        boot_loader.set_direction_input()
 
     upload_firmware(device, baudrate, firmware)
 
-if __name__ == '__main__':
-    main()
 
+if __name__ == "__main__":
+    main()  # pylint: disable=no-value-for-parameter
