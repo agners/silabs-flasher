@@ -17,7 +17,7 @@ $ pip install silabs-flasher
 To use GPIOs to reset the chip (useful on Home Assistant Yellow) make sure to
 install with gpiod from PyPI as extra dependency:
 ```
-$ pip install silabs-flasher[gpio]
+$ pip install "silabs-flasher[gpio]"
 ```
 
 ## Usage
