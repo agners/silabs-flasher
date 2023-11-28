@@ -1,4 +1,4 @@
-bellows>=0.24.0
+bellows==0.24.0
 xmodem>=0.4.6
 pyserial>=3.5
 pexpect>=4.8.0
