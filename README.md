@@ -1,11 +1,13 @@
+> [!NOTE]  
+> This project is dormant, please use the much more capable utilty called [Universal Silicon Labs
+Flasher](https://github.com/NabuCasa/universal-silabs-flasher).
+
+
 # Silicon Labs Firmware flashing utility
 
 The `silabs-flasher` utility allows to flash products using the Silicon Labs
 Wireless Gecko Series 1 and 2 chips. It makes use of the zigpy bellows library 
 to communicate using the EmberZNet Serial Protocol over serial port.
-
-Note: There is also a more capable utilty called [Universal Silicon Labs
-Flasher](https://github.com/NabuCasa/universal-silabs-flasher).
 
 ## Install
 
